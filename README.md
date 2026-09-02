@@ -59,11 +59,17 @@ A verificação **nunca altera o score**; só gera flag para revisão humana.
 | I1 · 2b | 5 pts migram para 3a (denominador continua 60) |
 | I2 · A2, B2 | vale pontuação máxima (denominador fixo 40) |
 
-## Como colar no claude.ai
+## Como abrir no claude.ai
 
-1. Abra um chat no claude.ai e peça um artifact React, ou edite o artifact existente.
-2. Substitua todo o código pelo conteúdo de `src/qa_nutricional.jsx`.
-3. Confira no cabeçalho do artifact: `Prompt v4 · claude-opus-5 · effort medium`.
+**Se você é nutricionista e vai usar a ferramenta:** siga [COMO-USAR.md](COMO-USAR.md). Tem o prompt pronto para colar, o teste de conferência e o que fazer quando algo dá errado. Não precisa mexer neste repositório.
+
+O prompt aponta para a tag **`v4`**, não para `main`, para que quem monta o artifact sempre pegue a versão testada:
+
+```
+https://raw.githubusercontent.com/carlosmanual/qa-nutricional/v4/src/qa_nutricional.jsx
+```
+
+Ao promover uma versão nova, crie a tag (`git tag -a v5 ... && git push origin v5`) e atualize as URLs em `COMO-USAR.md`.
 
 Constantes que podem precisar de ajuste, todas no topo do `.jsx`:
 
