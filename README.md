@@ -7,7 +7,7 @@ Artifact React que roda dentro do claude.ai e pontua a qualidade de consultas nu
 | Código | `src/qa_nutricional.jsx` (único arquivo em produção) |
 | Rubrica legível | `prompt/rubrica.md` (mesmo texto das constantes do `.jsx`) |
 | Histórico de versões | `CHANGELOG.md` |
-| Versão atual do prompt | **v4** (constante `PROMPT_VERSION` no `.jsx`) |
+| Versão atual do prompt | **v4.1** (constante `PROMPT_VERSION` no `.jsx`) |
 
 ## Como funciona (v4)
 
@@ -63,10 +63,10 @@ A verificação **nunca altera o score**; só gera flag para revisão humana.
 
 **Se você é nutricionista e vai usar a ferramenta:** siga [COMO-USAR.md](COMO-USAR.md). Tem o prompt pronto para colar, o teste de conferência e o que fazer quando algo dá errado. Não precisa mexer neste repositório.
 
-O prompt aponta para a tag **`v4`**, não para `main`, para que quem monta o artifact sempre pegue a versão testada:
+O prompt aponta para a tag **`v4.1`**, não para `main`, para que quem monta o artifact sempre pegue a versão testada:
 
 ```
-https://raw.githubusercontent.com/carlosmanual/qa-nutricional/v4/src/qa_nutricional.jsx
+https://raw.githubusercontent.com/carlosmanual/qa-nutricional/v4.1/src/qa_nutricional.jsx
 ```
 
 Ao promover uma versão nova, crie a tag (`git tag -a v5 ... && git push origin v5`) e atualize as URLs em `COMO-USAR.md`.
@@ -78,7 +78,7 @@ Constantes que podem precisar de ajuste, todas no topo do `.jsx`:
 | `MODEL` | `claude-opus-5` | Se a latência via proxy passar de ~60 s por caso, `claude-sonnet-5` |
 | `EFFORT` | `medium` | Subir para `high` se a calibração mostrar acordo baixo nos critérios de julgamento |
 | `DECIMAL_SEP` | `,` | `.` se a planilha estiver em locale en-US |
-| `PROMPT_VERSION` | `v4` | **Sempre** que qualquer texto de critério/regra mudar |
+| `PROMPT_VERSION` | `v4.1` | **Sempre** que qualquer texto de critério/regra mudar |
 
 ## Como usar (nutricionista avaliadora)
 
@@ -145,4 +145,4 @@ Pré-requisito confirmado: a planilha QA_Calibracao tem as notas humanas **por c
 
 - React + lucide-react (fornecidos pelo runtime do artifact).
 - pdf.js 3.11.174 via cdnjs, carregado em runtime para extrair texto de PDF.
-- Proxy do artifact para `api.anthropic.com/v1/messages` (sem chave no código). Se o proxy rejeitar `output_config`, o artifact repete a chamada sem ele e valida o JSON manualmente (a linha exportada leva a flag correspondente).
+- Proxy do artifact para `api.anthropic.com/v1/messages` (sem chave no código). Se o proxy rejeitar `output_config` ou a resposta não parsear, o artifact repete a chamada sem schema; o formato de saída também está escrito no prompt, então o plano B produz o mesmo JSON. O motivo do plano B vai para as flags e para a coluna `flags` da planilha. Se mesmo assim a maioria dos critérios vier sem score, o resultado é marcado inválido e não pode ser copiado.

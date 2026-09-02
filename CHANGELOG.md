@@ -2,6 +2,20 @@
 
 Uma entrada por `PROMPT_VERSION`. Registre o acordo medido na aba Calibração assim que o golden set rodar.
 
+## v4.1 — 2026-09-02
+
+Correção de um caso real (RC12) em que a primeira chamada com schema falhou, o plano B sem schema devolveu um JSON com chaves próprias, e a tela mostrou "5.0 / 100" com 19 critérios em branco como se fosse uma nota.
+
+- **Formato de saída passou a ir no prompt**, gerado a partir do mesmo objeto de schema (`schemaToTemplate`). Em v4 as chaves `i1`, `i2`, `score`, `evidencia`, `justificativa` só existiam em `output_config.format`; sem ele, o modelo inventava a estrutura. Agora o plano B produz o mesmo JSON que o plano A.
+- **Motivo do plano B registrado nas flags**: HTTP 400 com a mensagem da API/proxy, ou "1ª resposta não parseável" com o início do texto. É o que vai dizer se o proxy do artifact aceita `output_config`.
+- **Parse tolerante**: do primeiro `{` ao último `}`, sobrevive a texto ou crases em volta do JSON.
+- **Resultado inválido é bloqueado**: se mais da metade dos critérios vier sem score, aparece banner vermelho, o total não é exibido como nota e o botão "Copiar linha para a planilha" fica desabilitado.
+- **Resposta bruta do modelo** (até 4000 caracteres) fica disponível num bloco expansível quando há plano B ou resultado inválido, para diagnóstico sem precisar reproduzir.
+- Sem mudança em critérios, pesos ou regras. O bump de versão existe porque o texto do system prompt mudou (template de saída, ~2k tokens a mais).
+- 13 testes novos (49 no total).
+
+**Acordo medido**: pendente (rodar golden set).
+
 ## v4 — 2026-09-02
 
 **Arquitetura**

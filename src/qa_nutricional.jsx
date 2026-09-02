@@ -9,7 +9,7 @@ import { ClipboardCopy, ChevronDown, ChevronUp, Loader2, History, Trash2, Upload
 // Repositório e changelog: github.com/carlosmanual/qa-nutricional
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const PROMPT_VERSION = "v4";
+export const PROMPT_VERSION = "v4.1";
 const MODEL = "claude-opus-5";      // fallback pragmático se latência via proxy > ~60s: "claude-sonnet-5"
 const EFFORT = "medium";            // low | medium | high | xhigh | max
 const MAX_TOKENS = 16000;           // o thinking adaptativo consome parte deste teto
@@ -385,6 +385,8 @@ ${I2_FORM.map(fmtCrit).join("\n\n")}`);
   } else {
     parts.push(`INSTRUMENTO 2: NÃO AVALIAR neste caso (nenhum e-mail nem material foi fornecido). O JSON não terá a chave "i2".`);
   }
+  // O formato vai no prompt E no output_config: se o proxy derrubar o schema (plano B), o modelo ainda sabe as chaves.
+  parts.push(formatoSaida(buildSchemaP(i2Avaliavel)));
   return parts.join("\n\n");
 }
 
@@ -398,6 +400,7 @@ function buildSystemA() {
 4. Justificativa: uma frase curta e objetiva.`,
     `INSTRUMENTO 3 — ACOMPANHAMENTO ASSÍNCRONO (20 pts)
 ${I3_CRIT.map(fmtCrit).join("\n\n")}`,
+    formatoSaida(buildSchemaA()),
   ].join("\n\n");
 }
 
@@ -512,6 +515,56 @@ function buildSchemaP(i2Avaliavel) {
 
 function buildSchemaA() {
   return { type: "object", properties: { i3: instrumentSchema(I3_CRIT) }, required: ["i3"], additionalProperties: false };
+}
+
+// Esqueleto legível do schema, para colocar no prompt. Gerado do mesmo objeto que vai em
+// output_config.format, então nunca diverge dele. É o que salva o plano B (chamada sem schema).
+function schemaToTemplate(node, indent = "") {
+  if (!node) return "null";
+  if (node.enum) return node.enum.map((v) => JSON.stringify(v)).join(" | ");
+  if (node.type === "string") return '"..."';
+  if (node.type === "boolean") return "true | false";
+  if (node.type === "number" || node.type === "integer") return "0";
+  if (node.type === "array") return `[ ${schemaToTemplate(node.items, indent)} ]`;
+  if (node.type === "object") {
+    const inner = indent + "  ";
+    const lines = Object.entries(node.properties || {}).map(([k, v]) => `${inner}${JSON.stringify(k)}: ${schemaToTemplate(v, inner)}`);
+    return `{\n${lines.join(",\n")}\n${indent}}`;
+  }
+  return "null";
+}
+
+function formatoSaida(schema) {
+  return `FORMATO DE SAÍDA (obrigatório)
+Responda com UM único objeto JSON, sem markdown, sem crases, sem texto antes ou depois.
+Use EXATAMENTE estas chaves, com estes nomes e nesta ordem. Não invente chaves, não renomeie, não omita.
+Onde há alternativas separadas por "|", escolha uma. Preencha "..." com o conteúdo pedido; use "" quando não houver.
+Listas entre [ ] podem ter zero ou mais itens com a forma indicada.
+
+${schemaToTemplate(schema)}`;
+}
+
+// Aceita JSON puro, JSON entre crases ou JSON com texto em volta: pega do primeiro "{" ao último "}".
+function parseModelJson(text) {
+  const t = String(text || "");
+  const a = t.indexOf("{");
+  const b = t.lastIndexOf("}");
+  if (a === -1 || b === -1 || b <= a) throw new Error("nenhum objeto JSON na resposta");
+  return JSON.parse(t.slice(a, b + 1));
+}
+
+// Proporção de critérios sem score válido. Acima de 0,5 o resultado é inválido e não pode ir para a planilha.
+function blankRatio(maps) {
+  let n = 0;
+  let blank = 0;
+  for (const mp of maps) {
+    if (!mp) continue;
+    for (const k in mp) {
+      n++;
+      if (mp[k].score === "") blank++;
+    }
+  }
+  return n ? blank / n : 1;
 }
 
 // ── Pré-checagens determinísticas (regex no SOAP) ───────────────────────────
@@ -759,30 +812,40 @@ async function callModel({ system, user, schema }) {
     return { ok: r.ok, status: r.status, data };
   }
 
-  function extract(data) {
-    if (data?.stop_reason === "refusal") throw new Error("O modelo recusou avaliar este caso (stop_reason = refusal). Revise o conteúdo ou avalie manualmente.");
-    const textBlock = data?.content?.find((c) => c.type === "text");
-    if (!textBlock?.text) throw new Error("Resposta sem texto do modelo.");
-    if (data?.stop_reason === "max_tokens") throw new Error("Resposta truncada (max_tokens). Caso muito longo; reduza os materiais ou aumente MAX_TOKENS.");
-    const clean = textBlock.text.replace(/^\s*```(?:json)?/i, "").replace(/```\s*$/, "").trim();
-    return JSON.parse(clean);
+  function textOf(data) {
+    return data?.content?.find((c) => c.type === "text")?.text || "";
   }
 
-  // 1ª tentativa: structured output. Se o proxy rejeitar (400) ou o texto não parsear, 2ª tentativa mínima.
+  function extract(data) {
+    if (data?.stop_reason === "refusal") throw new Error("O modelo recusou avaliar este caso (stop_reason = refusal). Revise o conteúdo ou avalie manualmente.");
+    const rawText = textOf(data);
+    if (!rawText) throw new Error("Resposta sem texto do modelo.");
+    if (data?.stop_reason === "max_tokens") throw new Error("Resposta truncada (max_tokens). Caso muito longo; reduza os materiais ou aumente MAX_TOKENS.");
+    return { parsed: parseModelJson(rawText), rawText };
+  }
+
+  // 1ª tentativa: structured output. Se o proxy rejeitar (400) ou o texto não parsear, 2ª tentativa sem schema.
+  // O motivo do plano B fica registrado para aparecer nas flags: sem isso não dá para saber se o schema é utilizável.
+  let fallbackReason = "";
   const first = await post(full);
   if (first.ok) {
     try {
-      return { parsed: extract(first.data), usedFallback: false, usage: first.data?.usage };
+      const { parsed, rawText } = extract(first.data);
+      return { parsed, rawText, usedFallback: false, fallbackReason: "", usage: first.data?.usage };
     } catch (e) {
       if (/recusou|truncada/.test(String(e.message))) throw e;
-      // cai no fallback
+      const snippet = textOf(first.data).slice(0, 160).replace(/\s+/g, " ");
+      fallbackReason = `1ª resposta (com schema) não parseável: ${e.message}. Início: "${snippet}"`;
     }
   } else if (first.status !== 400) {
     throw new Error(`Erro HTTP ${first.status}: ${first.data?.error?.message || "sem detalhe"}`);
+  } else {
+    fallbackReason = `API/proxy rejeitou a chamada com schema (HTTP 400): ${first.data?.error?.message || "sem detalhe"}`;
   }
   const second = await post(base);
   if (!second.ok) throw new Error(`Erro HTTP ${second.status}: ${second.data?.error?.message || "sem detalhe"}`);
-  return { parsed: extract(second.data), usedFallback: true, usage: second.data?.usage };
+  const { parsed, rawText } = extract(second.data);
+  return { parsed, rawText, usedFallback: true, fallbackReason, usage: second.data?.usage };
 }
 
 // ── PDF ─────────────────────────────────────────────────────────────────────
@@ -1079,6 +1142,7 @@ export default function QALLEEvaluator() {
     try {
       const flags = [];
       let entry;
+      let debug = { rawText: "", fallbackReason: "" };
 
       if (caseType === "P") {
         const i2Avaliavel = !!(emailText.trim() || files.length);
@@ -1087,8 +1151,9 @@ export default function QALLEEvaluator() {
         const system = buildSystemP(i2Avaliavel);
         const user = buildUserP(soapText, emailText, files, pre.dicaAlergia);
         const schema = buildSchemaP(i2Avaliavel);
-        const { parsed, usedFallback, usage } = await callModel({ system, user, schema });
-        if (usedFallback) flags.push("Resposta obtida sem structured output (fallback); enum validado manualmente");
+        const { parsed, usedFallback, fallbackReason, rawText, usage } = await callModel({ system, user, schema });
+        if (usedFallback) flags.push(`Plano B acionado (chamada sem schema; enum validado manualmente). Motivo: ${fallbackReason}`);
+        debug = { rawText: (rawText || "").slice(0, 4000), fallbackReason };
 
         const fatos = coerceFatos(parsed.fatos);
         const i1 = coerceInstrument(parsed.i1, I1_ALL, flags);
@@ -1138,8 +1203,9 @@ export default function QALLEEvaluator() {
         const system = buildSystemA();
         const user = buildUserA(asyncText);
         const schema = buildSchemaA();
-        const { parsed, usedFallback, usage } = await callModel({ system, user, schema });
-        if (usedFallback) flags.push("Resposta obtida sem structured output (fallback); enum validado manualmente");
+        const { parsed, usedFallback, fallbackReason, rawText, usage } = await callModel({ system, user, schema });
+        if (usedFallback) flags.push(`Plano B acionado (chamada sem schema; enum validado manualmente). Motivo: ${fallbackReason}`);
+        debug = { rawText: (rawText || "").slice(0, 4000), fallbackReason };
         const i3 = coerceInstrument(parsed.i3, I3_CRIT, flags);
         const regNorm = norm(asyncText);
         for (const c of I3_CRIT) {
@@ -1159,6 +1225,10 @@ export default function QALLEEvaluator() {
       entry.flags = flags;
       entry.inputs = { soapText, emailText, asyncText, files };
       entry.meta = { model: MODEL, effort: EFFORT, promptVersion: PROMPT_VERSION, elapsedMs: Date.now() - t0 };
+      entry.debug = debug;
+      // Se a maioria dos critérios veio sem score, o JSON não seguiu o formato: nada desta tela vale.
+      entry.invalid = blankRatio([entry.crit.i1, entry.crit.i2, entry.crit.i3]) > 0.5;
+      if (entry.invalid) flags.unshift("RESULTADO INVÁLIDO: a maioria dos critérios veio sem score; o JSON do modelo não seguiu o formato. Não copiar para a planilha.");
       setResult(entry);
       setHistory((h) => [entry, ...h]);
     } catch (e) {
@@ -1172,6 +1242,7 @@ export default function QALLEEvaluator() {
 
   async function copyFullRow() {
     if (!result) return;
+    if (result.invalid) { setError("Resultado inválido: o modelo não devolveu os critérios no formato esperado. Avalie de novo em vez de copiar."); return; }
     if (!codeOk) { setError("Informe o código do caso no formato P01 / A01 (letra + 2 ou 3 dígitos) antes de copiar. Ele é a chave da planilha."); return; }
     setError("");
     const line = buildSheetRow({ ...result, caseCode: caseCode.trim().toUpperCase() }, avaliador);
@@ -1304,11 +1375,30 @@ export default function QALLEEvaluator() {
               </div>
               <div style={{ textAlign: "right" }}>
                 <div style={{ fontSize: 11, color: "#999" }}>SCORE</div>
-                <div style={{ fontSize: 28, fontWeight: 800, color: DARK }}>
-                  {result.totals.scoreTotal.toFixed(1)}<span style={{ fontSize: 14, color: "#999", fontWeight: 400 }}> / {result.totals.denominadorTotal}</span>
-                </div>
+                {result.invalid ? (
+                  <div style={{ fontSize: 22, fontWeight: 800, color: RED }}>inválido</div>
+                ) : (
+                  <div style={{ fontSize: 28, fontWeight: 800, color: DARK }}>
+                    {result.totals.scoreTotal.toFixed(1)}<span style={{ fontSize: 14, color: "#999", fontWeight: 400 }}> / {result.totals.denominadorTotal}</span>
+                  </div>
+                )}
               </div>
             </div>
+
+            {result.invalid && (
+              <div style={{ background: RED_BG, border: `1px solid ${RED}55`, borderRadius: 8, padding: "10px 14px", marginBottom: 14 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: RED, marginBottom: 4 }}>✖ Resultado inválido: o modelo não devolveu os critérios no formato esperado</div>
+                <div style={{ fontSize: 12, color: RED, lineHeight: 1.5 }}>Nenhuma nota desta tela vale e o botão de copiar está desabilitado. Clique em "Avaliar caso" de novo. Se repetir, envie ao Carlos o conteúdo de "Resposta bruta do modelo" abaixo.</div>
+              </div>
+            )}
+
+            {(result.invalid || result.debug?.fallbackReason) && result.debug?.rawText && (
+              <details style={{ marginBottom: 14, fontSize: 12 }}>
+                <summary style={{ cursor: "pointer", color: "#666", fontWeight: 600 }}>Resposta bruta do modelo (diagnóstico)</summary>
+                {result.debug.fallbackReason && <div style={{ margin: "6px 0", color: AMBER }}>{result.debug.fallbackReason}</div>}
+                <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", background: GRAY_L, padding: 8, borderRadius: 6, maxHeight: 260, overflow: "auto", fontSize: 11, margin: 0 }}>{result.debug.rawText}</pre>
+              </details>
+            )}
 
             {result.flags.length > 0 && (
               <div style={{ background: AMBER_BG, border: `1px solid ${AMBER}33`, borderRadius: 8, padding: "10px 14px", marginBottom: 14 }}>
@@ -1329,8 +1419,8 @@ export default function QALLEEvaluator() {
               <InstrumentBlock title="INSTRUMENTO 3 — ASSÍNCRONO" accentBg={BLUE_BG} accentColor={BLUE} crit={result.crit.i3} criteriaCentral={I3_CRIT} criteriaForm={[]} totals={result.totals.i3} />
             )}
 
-            <button onClick={copyFullRow} style={{ marginTop: 8, width: "100%", padding: "11px 0", borderRadius: 7, border: "none", background: copiedRow ? GREEN : DARK, color: "white", fontSize: 14, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-              <ClipboardCopy size={15} /> {copiedRow ? "Linha copiada!" : "Copiar linha para a planilha"}
+            <button onClick={copyFullRow} disabled={result.invalid} style={{ marginTop: 8, width: "100%", padding: "11px 0", borderRadius: 7, border: "none", background: result.invalid ? "#C9CED4" : copiedRow ? GREEN : DARK, color: "white", fontSize: 14, fontWeight: 700, cursor: result.invalid ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              <ClipboardCopy size={15} /> {result.invalid ? "Resultado inválido: não copiar" : copiedRow ? "Linha copiada!" : "Copiar linha para a planilha"}
             </button>
             <div style={{ fontSize: 11, color: "#999", textAlign: "center", marginTop: 6 }}>
               Cole na aba da semana certa, a partir da coluna "timestamp". As colunas novas ({PROMPT_VERSION}, modelo, denominadores, flags) ficam depois das 3 colunas manuais.

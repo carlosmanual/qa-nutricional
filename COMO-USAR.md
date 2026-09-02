@@ -19,11 +19,11 @@ Copie o bloco inteiro abaixo e cole como primeira mensagem.
 ```
 Busque o conteúdo desta URL e crie um artifact React com ele:
 
-https://raw.githubusercontent.com/carlosmanual/qa-nutricional/v4/src/qa_nutricional.jsx
+https://raw.githubusercontent.com/carlosmanual/qa-nutricional/v4.1/src/qa_nutricional.jsx
 
 Regras obrigatórias:
 
-1. Reproduza o arquivo EXATAMENTE como está, do primeiro ao último caractere. São 1355 linhas.
+1. Reproduza o arquivo EXATAMENTE como está, do primeiro ao último caractere. São 1445 linhas.
 2. Não resuma, não encurte, não reescreva, não reorganize, não "melhore" nada. Não corrija o que parecer estranho: é intencional.
 3. Nunca escreva placeholders como "// resto do código igual", "// ...", "[mantém o restante]" ou equivalente. O artifact tem que estar completo.
 4. Não altere nenhuma constante do topo do arquivo, em especial PROMPT_VERSION, MODEL, EFFORT, MAX_TOKENS e DECIMAL_SEP. Elas mudam a nota que a ferramenta dá.
@@ -34,7 +34,7 @@ Regras obrigatórias:
 Ao terminar, confirme em uma linha cada item:
 - quantas linhas o artifact tem;
 - que a última linha do arquivo é uma chave de fechamento "}";
-- que o arquivo contém a constante PROMPT_VERSION = "v4";
+- que o arquivo contém a constante PROMPT_VERSION = "v4.1";
 - que o arquivo contém as funções ruleAntropometria, ruleAlergeno e buildSheetRow.
 ```
 
@@ -43,7 +43,7 @@ Ao terminar, confirme em uma linha cada item:
 Quando o artifact abrir, olhe o topo. Tem que estar escrito exatamente:
 
 > **Avaliador LLM — QA Nutricional Voy**
-> Prompt v4 · claude-opus-5 · effort medium
+> Prompt v4.1 · claude-opus-5 · effort medium
 
 Se estiver escrito outra versão ou outro modelo, o Claude alterou o código. Recomece do passo 1.
 
@@ -75,7 +75,7 @@ Clique em **Avaliar caso** e confira as quatro coisas:
 
 Bateu tudo? O artifact está correto. Não bateu? O código veio incompleto: recomece do passo 1.
 
-> Esse teste existe porque o texto tem 1355 linhas. Um artifact truncado continua bonito na tela, mas perde as regras automáticas e passa a dar nota errada em silêncio. O teste é o que revela isso.
+> Esse teste existe porque o texto tem 1445 linhas. Um artifact truncado continua bonito na tela, mas perde as regras automáticas e passa a dar nota errada em silêncio. O teste é o que revela isso.
 
 ## Passo 5 — Usar
 
@@ -100,6 +100,7 @@ Você pode avaliar vários casos no mesmo artifact, um depois do outro. Só reab
 | O teste do passo 4 não bate | Recomece do passo 1, em chat novo |
 | "Erro ao processar: Resposta truncada" | O caso está muito longo. Tire os PDFs menos relevantes e avalie de novo |
 | "O modelo recusou avaliar este caso" | Avalie manualmente e avise o Carlos |
+| Banner vermelho "Resultado inválido" | O modelo não respondeu no formato certo. Clique em "Avaliar caso" de novo. Se repetir, abra "Resposta bruta do modelo", copie e mande para o Carlos |
 | A cópia automática não funciona | Aparece uma caixa com o texto já selecionado. Aperte Ctrl+C (Cmd+C no Mac) |
 | A linha colou toda numa célula só | Cole com **Colar especial → Somente texto**, ou avise o Carlos |
 
@@ -114,19 +115,19 @@ Não resuma, não encurte, não reescreva, não "melhore" e não corrija nada. N
 
 Se o arquivo não couber inteiro na resposta, pare e me avise em vez de entregar uma versão parcial.
 
-Ao terminar, confirme quantas linhas o artifact tem e que ele contém PROMPT_VERSION = "v4".
+Ao terminar, confirme quantas linhas o artifact tem e que ele contém PROMPT_VERSION = "v4.1".
 ```
 
 ---
 
 ## Para quem mantém a ferramenta
 
-O prompt aponta para a **tag `v4`**, não para `main`. Assim quem monta o artifact sempre pega a versão testada, mesmo que `main` esteja no meio de uma alteração.
+O prompt aponta para a **tag `v4.1`**, não para `main`. Assim quem monta o artifact sempre pega a versão testada, mesmo que `main` esteja no meio de uma alteração.
 
 Ao promover uma versão nova:
 
 1. `git tag -a v5 -m "..." && git push origin v5`
-2. Trocar `v4` por `v5` nas duas URLs e nas checagens deste arquivo.
+2. Trocar `v4.1` por `v5` nas duas URLs e nas checagens deste arquivo (inclusive o número de linhas do arquivo, na regra 1 do prompt).
 3. Avisar a equipe para remontar o artifact. Enquanto não remontarem, elas seguem na v4, e a coluna `prompt_version` da planilha registra isso corretamente.
 
 Alternativa com menos passos para a equipe: montar o artifact uma vez, publicá-lo e distribuir o link. Nesse caso ninguém precisa deste guia, e a atualização vira uma republicação só sua.
