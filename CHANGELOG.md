@@ -12,7 +12,7 @@ Três causas, diagnosticadas a partir da própria planilha QA Semanal:
 - **As 7 colunas novas da v4 sobrescreviam a fórmula `nutricionista`.** Nas abas de semana a linha cola em D..AY e a fórmula fica em AZ; a v4 exportava 55 células e a 49ª (`prompt_version`) apagava a fórmula. A linha voltou a ter **48 células**, idêntica à v3. Os metadados ficam atrás de `EXPORT_METADADOS = false`; ligar exige 7 cabeçalhos na planilha após `nutricionista`, e aí a linha inclui `nutricionista` como valor (espelho de `LEFT(caso, LEN-2)`) seguido dos 7 campos.
 - **Separador decimal.** `DECIMAL_SEP` voltou a `.`: os totais já gravados pela v3 são números com ponto; vírgula entraria como texto e sairia da média.
 - Placeholder do campo passa a `Ab10`; aviso amarelo abaixo do campo quando o formato não bate. Texto sob o botão diz a célula certa (coluna `timestamp`, D nas abas de semana).
-- Testes: 52 (3 novos, 2 ajustados).
+- Testes: 51 (4 novos no lugar de 1, 1 ajustado).
 
 Relação com os patches recebidos (`qa_codigo_caso.patch`, `qa_codigo_caso_v6.patch`): mesma correção de regex e de caixa, mas aqui a regex exige exatamente 2 dígitos (a fórmula corta 2 caracteres) e não bloqueia; os patches não tratavam a colisão com a fórmula nem o decimal.
 
