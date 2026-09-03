@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import * as m from "./out.js";
 let fails=0; const ok=(c,msg)=>{ if(!c){fails++; console.log("FAIL:",msg);} else console.log("ok  :",msg); };
 ok(m.norm("Alimentação  saudável!")==="alimentacaosaudavel","norm remove acentos/pontuação/espaços");
@@ -103,13 +104,23 @@ const flFP=[]; const docFP="Este e um novo plano com opcao melhor.";
 m.ruleAlergeno(i2fp, m.coerceFatos({alergias_documentadas:[{termo:"ovo",citacao:"alergia a ovo"},{termo:"mel",citacao:"x"}],alergenico_contradiz_material:{valor:false,citacao:""}}), NN(docFP), flFP, P(docFP));
 ok(i2fp["B2"].score==="100"&&flFP.length===0,"alérgeno: 'novo'/'melhor' não geram mais flag falsa");
 
-// integridade da rubrica (H): o hash tem que bater com a constante publicada
+// integridade da rubrica (H): cada bloco tem que bater com a constante publicada
 const hAtual=m.hashRubrica();
 ok(/^[0-9a-f]{8}$/.test(hAtual),"hashRubrica: 8 hex");
 ok(hAtual===m.hashRubrica(),"hashRubrica: determinístico");
-if(hAtual!==m.RUBRICA_HASH){
+const blocos=m.hashBlocos();
+ok(blocos.length===Object.keys(m.RUBRICA_BLOCOS_HASH).length,"hashBlocos: um hash por bloco declarado");
+const divergentes=blocos.filter(([n,h])=>m.RUBRICA_BLOCOS_HASH[n]!==h);
+if(divergentes.length||hAtual!==m.RUBRICA_HASH){
   fails++;
-  console.log(`FAIL: RUBRICA_HASH desatualizado. A rubrica ou uma constante mudou.\n      Troque no topo de src/qa_nutricional.jsx:\n      export const RUBRICA_HASH = "${hAtual}";`);
-} else console.log("ok  : RUBRICA_HASH bate com a rubrica atual ("+hAtual+")");
+  console.log(`FAIL: hashes desatualizados (${divergentes.map(([n])=>n).join(", ")||"combinado"}).\n      Troque no topo de src/qa_nutricional.jsx:\n      export const RUBRICA_HASH = "${hAtual}";\n${blocos.map(([n,h])=>`        "${n}": "${h}",`).join("\n")}`);
+} else console.log("ok  : RUBRICA_HASH e os 9 blocos batem com a rubrica atual ("+hAtual+")");
+
+// o fonte não pode conter caractere de controle invisível: a v4.1.3 tinha um byte nulo
+// dentro do separador do hash, ele sumia em toda transcrição e o guarda acusava a si mesmo
+const fonte=readFileSync(new URL("../src/qa_nutricional.jsx",import.meta.url),"utf8");
+const ctrl=[...fonte].map((c,i)=>[c,i]).filter(([c])=>c.charCodeAt(0)<32&&c!=="\n"&&c!=="\t");
+ok(ctrl.length===0,"fonte sem caractere de controle invisível"+(ctrl.length?` (achei ${ctrl.length}, 1º em ${ctrl[0][1]})`:""));
+
 console.log(fails?`\n${fails} FALHA(S)`:"\nTODOS OS TESTES PASSARAM");
 process.exit(fails?1:0);

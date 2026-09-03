@@ -2,6 +2,20 @@
 
 Uma entrada por `PROMPT_VERSION`. Registre o acordo medido na aba Calibração assim que o golden set rodar.
 
+## v4.1.4 — 2026-09-03 (o guarda de integridade acusava a si mesmo)
+
+Sem mudança de rubrica nem de `PROMPT_VERSION` (continua `v4.1`). `RUBRICA_HASH` muda para **`3fd979ff`** porque o separador do hash mudou; nenhum texto de critério foi tocado.
+
+Reportado por Carlos: artifact remontado do zero, em chat novo, abriu com banner vermelho e `d6887ad9` no lugar de `8d5e63b9`, com **Avaliar** e **Copiar** bloqueados.
+
+Causa raiz: `hashRubrica` juntava as partes com um **byte nulo literal** (`\x00`) gravado direto no fonte, não com o escape `\0`. Um caractere de controle invisível não sobrevive a transcrição nenhuma — some ao ser lido e reescrito. Confirmado por reprodução: `d6887ad9` é o hash do **mesmo conteúdo de rubrica** com as partes juntadas por string vazia. Ou seja, a rubrica tinha chegado íntegra; o que faltava era o separador. O guarda disparou contra si mesmo e bloqueou uma ferramenta correta. Esse mesmo byte era também o motivo de `grep` e `file` tratarem o `.jsx` como binário.
+
+- `HASH_SEP` passa a ser texto imprimível (`\n<<|>>\n`).
+- **Hash por bloco.** Nove blocos (constantes · definições · regras gerais · regras de NA · critérios de I1, I2 e I3 · formato do export · regex de pré-checagem), cada um com seu hash publicado em `RUBRICA_BLOCOS_HASH`. O bloqueio agora é decidido por bloco, e o banner **nomeia** o que mudou em vez de dizer só "algo mudou". Verificado: alterar uma palavra num critério do I1 acende exatamente `critérios do Instrumento 1`.
+- Teste novo de regressão: o fonte não pode conter caractere de controle invisível (só `\n` e `\t`). É o teste que teria evitado isso.
+- `tests/run.sh` passa a imprimir, quando desatualizado, o `RUBRICA_HASH` **e** as nove linhas de `RUBRICA_BLOCOS_HASH` prontas para colar.
+- Testes: 68 (3 novos).
+
 ## v4.1.3 — 2026-09-03 (falso positivo de alérgeno)
 
 Sem mudança de rubrica nem de `PROMPT_VERSION` (continua `v4.1`); `RUBRICA_HASH` segue `8d5e63b9`, porque o checksum cobre dados e a correção é numa função.

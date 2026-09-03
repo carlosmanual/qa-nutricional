@@ -13,7 +13,19 @@ export const PROMPT_VERSION = "v4.1";
 // Impressão digital da rubrica e das constantes que mudam a nota. Conferida no carregamento:
 // um artifact em que o Claude "melhorou" um critério ao transcrever compila e roda igual, mas
 // pontua fora da rubrica — e nenhum teste de tela pega isso. Valor gerado por `bash tests/run.sh`.
-export const RUBRICA_HASH = "8d5e63b9";
+export const RUBRICA_HASH = "3fd979ff";
+// Hash por bloco: quando um diverge, o banner nomeia o bloco em vez de só dizer "algo mudou".
+export const RUBRICA_BLOCOS_HASH = {
+  "constantes": "da246284",
+  "definições": "0078c25a",
+  "regras gerais": "26472ec1",
+  "regras de NA": "79dbe4cb",
+  "critérios do Instrumento 1": "9e926cba",
+  "critérios do Instrumento 2": "9eb61106",
+  "critérios do Instrumento 3": "c79103de",
+  "formato do export": "fa97c6af",
+  "regex de pré-checagem": "382eecda",
+};
 const MODEL = "claude-opus-5";      // fallback pragmático se latência via proxy > ~60s: "claude-sonnet-5"
 const EFFORT = "medium";            // low | medium | high | xhigh | max
 const MAX_TOKENS = 16000;           // o thinking adaptativo consome parte deste teto
@@ -602,21 +614,40 @@ function anyMatch(rxs, text) {
 // varia por ambiente); essas são cobertas pelos testes de lógica.
 export { termoNoTexto, normPalavras };
 
-export function hashRubrica() {
-  const partes = [
-    PROMPT_VERSION, MODEL, EFFORT, String(MAX_TOKENS), DECIMAL_SEP, String(EXPORT_METADADOS), String(EVIDENCIA_MAX_CHARS),
-    DEFINICOES, REGRAS_GERAIS, REGRAS_NA,
-    JSON.stringify([I1_CENTRAL, I1_FORM, I2_CENTRAL, I2_FORM, I3_CRIT]),
-    JSON.stringify([SHEET_HEADERS_BASE, SHEET_HEADERS_METADADOS]),
-    String(CASE_CODE_RX),
-    Object.entries(RX).map(([k, v]) => `${k}=${Array.isArray(v) ? v.map(String).join("|") : String(v)}`).join(";"),
-  ].join(" ");
+// Separador do hash: texto imprimível, nunca caractere de controle. A v4.1.3 usava um byte
+// nulo aqui; ele é invisível, some em qualquer transcrição e o guarda acusava "rubrica
+// alterada" quando o que tinha sumido era o próprio separador. Não repetir esse erro.
+const HASH_SEP = "\n<<|>>\n";
+
+// A rubrica é hasheada em blocos: quando um bate e outro não, o banner diz qual mudou.
+export const RUBRICA_BLOCOS = [
+  ["constantes", () => [PROMPT_VERSION, MODEL, EFFORT, String(MAX_TOKENS), DECIMAL_SEP, String(EXPORT_METADADOS), String(EVIDENCIA_MAX_CHARS)].join(HASH_SEP)],
+  ["definições", () => DEFINICOES],
+  ["regras gerais", () => REGRAS_GERAIS],
+  ["regras de NA", () => REGRAS_NA],
+  ["critérios do Instrumento 1", () => JSON.stringify([I1_CENTRAL, I1_FORM])],
+  ["critérios do Instrumento 2", () => JSON.stringify([I2_CENTRAL, I2_FORM])],
+  ["critérios do Instrumento 3", () => JSON.stringify(I3_CRIT)],
+  ["formato do export", () => JSON.stringify([SHEET_HEADERS_BASE, SHEET_HEADERS_METADADOS]) + HASH_SEP + String(CASE_CODE_RX)],
+  ["regex de pré-checagem", () => Object.entries(RX).map(([k, v]) => `${k}=${Array.isArray(v) ? v.map(String).join("|") : String(v)}`).join(";")],
+];
+
+export function djb2(texto) {
   let h = 5381;
-  for (let i = 0; i < partes.length; i++) h = ((h * 33) ^ partes.charCodeAt(i)) >>> 0;
+  for (let i = 0; i < texto.length; i++) h = ((h * 33) ^ texto.charCodeAt(i)) >>> 0;
   return h.toString(16).padStart(8, "0");
 }
 
+export function hashBlocos() {
+  return RUBRICA_BLOCOS.map(([nome, f]) => [nome, djb2(f())]);
+}
+
+export function hashRubrica() {
+  return djb2(hashBlocos().map(([nome, h]) => `${nome}=${h}`).join(HASH_SEP));
+}
+
 const RUBRICA_HASH_ATUAL = hashRubrica();
+const BLOCOS_DIVERGENTES = hashBlocos().filter(([nome, h]) => RUBRICA_BLOCOS_HASH[nome] !== h).map(([nome]) => nome);
 
 function preChecks(soap) {
   const hasProximosPontos = (() => {
@@ -1131,7 +1162,8 @@ export default function QALLEEvaluator() {
   });
   const [fallbackText, setFallbackText] = useState(null);
   const [previewId, setPreviewId] = useState(null);
-  const rubricaOk = RUBRICA_HASH_ATUAL === RUBRICA_HASH;
+  // Autoridade é o hash por bloco: ele prova que cada texto da rubrica chegou íntegro.
+  const rubricaOk = BLOCOS_DIVERGENTES.length === 0;
   const fileInputRef = useRef(null);
   const fallbackRef = useRef(null);
 
@@ -1346,7 +1378,7 @@ export default function QALLEEvaluator() {
           <div style={{ background: RED_BG, border: `1px solid ${RED}55`, borderRadius: 8, padding: "12px 16px", marginBottom: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: RED, marginBottom: 4 }}>✖ Este artifact não é a versão publicada</div>
             <div style={{ fontSize: 12, color: RED, lineHeight: 1.5 }}>
-              A rubrica ou uma constante foi alterada ao montar o artifact, então as notas sairiam fora do padrão da equipe. Esperado <code style={{ fontFamily: "ui-monospace, monospace" }}>{RUBRICA_HASH}</code>, encontrado <code style={{ fontFamily: "ui-monospace, monospace" }}>{RUBRICA_HASH_ATUAL}</code>. Remonte o artifact em um chat novo seguindo o guia (passo 1), sem deixar o Claude editar nada.
+              O texto foi alterado ao montar o artifact, então as notas sairiam fora do padrão da equipe. Bloco{BLOCOS_DIVERGENTES.length > 1 ? "s" : ""} com diferença: <strong>{BLOCOS_DIVERGENTES.join(", ")}</strong>. Remonte o artifact em um chat novo seguindo o guia (passo 1), sem deixar o Claude editar nada. Se repetir no mesmo bloco, mande esta frase para o Carlos.
             </div>
           </div>
         )}
