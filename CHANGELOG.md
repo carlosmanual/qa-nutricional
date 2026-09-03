@@ -2,6 +2,20 @@
 
 Uma entrada por `PROMPT_VERSION`. Registre o acordo medido na aba Calibração assim que o golden set rodar.
 
+## v4.1.1 — 2026-09-03 (botão "Copiar linha para a planilha")
+
+Sem mudança de rubrica nem de `PROMPT_VERSION` (continua `v4.1`). Tag nova porque o guia da nutri aponta para a tag.
+
+Três causas, diagnosticadas a partir da própria planilha QA Semanal:
+
+- **Regex do código bloqueava a cópia.** `CASE_CODE_RX` esperava `P01`/`A01` (herdado do placeholder da v3); os códigos reais são 2 letras da nutricionista + 2 dígitos (`Ab10`, `Fg04`, 219 linhas sem exceção). Agora a regex é `^[A-Za-z]{2}\d{2}$` e serve **só como aviso**: nunca impede a cópia. `toUpperCase()` removido nos 3 lugares, porque a fórmula `nutricionista` e a aba Médias distinguem `Ab` de `AB`.
+- **As 7 colunas novas da v4 sobrescreviam a fórmula `nutricionista`.** Nas abas de semana a linha cola em D..AY e a fórmula fica em AZ; a v4 exportava 55 células e a 49ª (`prompt_version`) apagava a fórmula. A linha voltou a ter **48 células**, idêntica à v3. Os metadados ficam atrás de `EXPORT_METADADOS = false`; ligar exige 7 cabeçalhos na planilha após `nutricionista`, e aí a linha inclui `nutricionista` como valor (espelho de `LEFT(caso, LEN-2)`) seguido dos 7 campos.
+- **Separador decimal.** `DECIMAL_SEP` voltou a `.`: os totais já gravados pela v3 são números com ponto; vírgula entraria como texto e sairia da média.
+- Placeholder do campo passa a `Ab10`; aviso amarelo abaixo do campo quando o formato não bate. Texto sob o botão diz a célula certa (coluna `timestamp`, D nas abas de semana).
+- Testes: 52 (3 novos, 2 ajustados).
+
+Relação com os patches recebidos (`qa_codigo_caso.patch`, `qa_codigo_caso_v6.patch`): mesma correção de regex e de caixa, mas aqui a regex exige exatamente 2 dígitos (a fórmula corta 2 caracteres) e não bloqueia; os patches não tratavam a colisão com a fórmula nem o decimal.
+
 ## v4.1 — 2026-09-02
 
 Correção de um caso real (RC12) em que a primeira chamada com schema falhou, o plano B sem schema devolveu um JSON com chaves próprias, e a tela mostrou "5.0 / 100" com 19 critérios em branco como se fosse uma nota.

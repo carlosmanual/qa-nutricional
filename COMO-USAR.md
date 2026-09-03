@@ -19,11 +19,11 @@ Copie o bloco inteiro abaixo e cole como primeira mensagem.
 ```
 Busque o conteúdo desta URL e crie um artifact React com ele:
 
-https://raw.githubusercontent.com/carlosmanual/qa-nutricional/v4.1/src/qa_nutricional.jsx
+https://raw.githubusercontent.com/carlosmanual/qa-nutricional/v4.1.1/src/qa_nutricional.jsx
 
 Regras obrigatórias:
 
-1. Reproduza o arquivo EXATAMENTE como está, do primeiro ao último caractere. São 1445 linhas.
+1. Reproduza o arquivo EXATAMENTE como está, do primeiro ao último caractere. São 1462 linhas.
 2. Não resuma, não encurte, não reescreva, não reorganize, não "melhore" nada. Não corrija o que parecer estranho: é intencional.
 3. Nunca escreva placeholders como "// resto do código igual", "// ...", "[mantém o restante]" ou equivalente. O artifact tem que estar completo.
 4. Não altere nenhuma constante do topo do arquivo, em especial PROMPT_VERSION, MODEL, EFFORT, MAX_TOKENS e DECIMAL_SEP. Elas mudam a nota que a ferramenta dá.
@@ -53,7 +53,7 @@ Antes de avaliar um caso real, rode este teste. Ele usa uma paciente **fictícia
 
 Preencha:
 
-- **Código:** `P99`
+- **Código:** `Xx99` (2 letras + 2 dígitos; é só teste)
 - **SOAP:** cole o texto abaixo
 - **E-mail e PDFs:** deixe vazios
 
@@ -75,17 +75,17 @@ Clique em **Avaliar caso** e confira as quatro coisas:
 
 Bateu tudo? O artifact está correto. Não bateu? O código veio incompleto: recomece do passo 1.
 
-> Esse teste existe porque o texto tem 1445 linhas. Um artifact truncado continua bonito na tela, mas perde as regras automáticas e passa a dar nota errada em silêncio. O teste é o que revela isso.
+> Esse teste existe porque o texto tem 1462 linhas. Um artifact truncado continua bonito na tela, mas perde as regras automáticas e passa a dar nota errada em silêncio. O teste é o que revela isso.
 
 ## Passo 5 — Usar
 
 1. Preencha seu nome (fica salvo no navegador).
-2. Código do caso no formato `P01` (consulta) ou `A01` (assíncrono). Sem código válido a ferramenta não deixa copiar a linha, porque ele é a chave da planilha.
+2. Código do caso: as 2 letras da nutricionista + o número do caso com 2 dígitos, ex.: `Ab10`. Maiúscula e minúscula importam (`Ab10`, não `AB10`): a planilha usa essas 2 letras para saber de quem é o caso. Se o formato não bater, aparece um aviso amarelo, mas a cópia funciona mesmo assim.
 3. **Cole o SOAP e o e-mail em campos separados.** Não junte os dois no mesmo campo: metade dos critérios depende de saber qual texto é qual.
 4. Suba os PDFs enviados ao paciente.
 5. **Avaliar caso**. Leva de 1 a 2 minutos.
 6. Leia primeiro o bloco amarelo de flags e o painel de fatos. Depois abra os critérios marcados com ⚠.
-7. **Copiar linha para a planilha** e cole na aba da semana, a partir da coluna `timestamp`.
+7. **Copiar linha para a planilha** e cole na aba da semana, na célula da coluna `timestamp` (coluna D) da linha do caso. As colunas A a C (`Caso` e os dois links) você preenche à mão. A coluna `nutricionista`, no fim, se preenche sozinha.
 
 Você pode avaliar vários casos no mesmo artifact, um depois do outro. Só reabra o passo 4 se recarregar a página e montar o artifact de novo.
 
@@ -122,12 +122,12 @@ Ao terminar, confirme quantas linhas o artifact tem e que ele contém PROMPT_VER
 
 ## Para quem mantém a ferramenta
 
-O prompt aponta para a **tag `v4.1`**, não para `main`. Assim quem monta o artifact sempre pega a versão testada, mesmo que `main` esteja no meio de uma alteração.
+O prompt aponta para a **tag `v4.1.1`**, não para `main`. Assim quem monta o artifact sempre pega a versão testada, mesmo que `main` esteja no meio de uma alteração.
 
 Ao promover uma versão nova:
 
 1. `git tag -a v5 -m "..." && git push origin v5`
-2. Trocar `v4.1` por `v5` nas duas URLs e nas checagens deste arquivo (inclusive o número de linhas do arquivo, na regra 1 do prompt).
-3. Avisar a equipe para remontar o artifact. Enquanto não remontarem, elas seguem na v4, e a coluna `prompt_version` da planilha registra isso corretamente.
+2. Trocar `v4.1.1` por `v5` nas duas URLs e nas checagens deste arquivo (inclusive o número de linhas do arquivo, na regra 1 do prompt).
+3. Avisar a equipe para remontar o artifact. Enquanto não remontarem, seguem na versão anterior; o cabeçalho do artifact mostra qual é.
 
 Alternativa com menos passos para a equipe: montar o artifact uma vez, publicá-lo e distribuir o link. Nesse caso ninguém precisa deste guia, e a atualização vira uma republicação só sua.

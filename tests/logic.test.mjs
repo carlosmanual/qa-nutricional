@@ -57,8 +57,12 @@ entry.crit.i1["1a"].justificativa="linha 1\nlinha 2\tcom tab";
 const row=m.buildSheetRow(entry,"Igona"); const cells=row.split("\t");
 ok(cells.length===m.SHEET_HEADERS.length,`export: ${cells.length} colunas = ${m.SHEET_HEADERS.length} headers`);
 ok(!/[\r\n]/.test(row),"export: sem quebras de linha");
-ok(cells[m.SHEET_HEADERS.indexOf("I1_total")]==="58,50"&&cells[m.SHEET_HEADERS.indexOf("total")]==="98,50","export: vírgula decimal");
-ok(cells[m.SHEET_HEADERS.indexOf("prompt_version")]==="v4.1","export: prompt_version");
+ok(cells[m.SHEET_HEADERS.indexOf("I1_total")]==="58.50"&&cells[m.SHEET_HEADERS.indexOf("total")]==="98.50","export: ponto decimal (a planilha grava os totais como número com ponto)");
+ok(m.SHEET_HEADERS.length===48&&m.SHEET_HEADERS[47]==="com ferramenta corrigida (total)"&&!m.SHEET_HEADERS.includes("nutricionista"),"export padrão: 48 células, para antes da fórmula nutricionista");
+const rowMeta=m.buildSheetRow({...entry,caseCode:"Ab10"},"Igona",[...m.SHEET_HEADERS,...m.SHEET_HEADERS_METADADOS]).split("\t");
+ok(rowMeta.length===56&&rowMeta[48]==="Ab"&&rowMeta[49]==="v4.1","export com metadados: nutricionista=Ab (espelha LEFT(LEN-2)), prompt_version na 50ª");
+ok(m.CASE_CODE_RX.test("Ab10")&&m.CASE_CODE_RX.test("Xx99")&&!m.CASE_CODE_RX.test("AB1")&&!m.CASE_CODE_RX.test("P01")&&!m.CASE_CODE_RX.test("Ab100"),"regex do código: 2 letras + 2 dígitos, sem bloquear");
+ok(m.buildSheetRow({...entry,caseCode:"Ab10"},"Igona").split("\t")[2]==="Ab10","export: código preserva a caixa (Ab10, não AB10)");
 // schema / system
 const sch=m.buildSchemaP(true); ok(sch.required.includes("i2")&&Object.keys(sch.properties.i1.properties).length===9&&Object.keys(sch.properties.i2.properties).length===10,"schema P: 9 + 10 critérios");
 ok(sch.properties.i1.properties["1b"].properties.score.enum.includes("NA")&&!sch.properties.i1.properties["1a"].properties.score.enum.includes("NA"),"schema: NA só onde permitido");

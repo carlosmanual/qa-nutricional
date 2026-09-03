@@ -63,10 +63,10 @@ A verificação **nunca altera o score**; só gera flag para revisão humana.
 
 **Se você é nutricionista e vai usar a ferramenta:** siga [COMO-USAR.md](COMO-USAR.md). Tem o prompt pronto para colar, o teste de conferência e o que fazer quando algo dá errado. Não precisa mexer neste repositório.
 
-O prompt aponta para a tag **`v4.1`**, não para `main`, para que quem monta o artifact sempre pegue a versão testada:
+O prompt aponta para a tag **`v4.1.1`**, não para `main`, para que quem monta o artifact sempre pegue a versão testada:
 
 ```
-https://raw.githubusercontent.com/carlosmanual/qa-nutricional/v4.1/src/qa_nutricional.jsx
+https://raw.githubusercontent.com/carlosmanual/qa-nutricional/v4.1.1/src/qa_nutricional.jsx
 ```
 
 Ao promover uma versão nova, crie a tag (`git tag -a v5 ... && git push origin v5`) e atualize as URLs em `COMO-USAR.md`.
@@ -77,30 +77,29 @@ Constantes que podem precisar de ajuste, todas no topo do `.jsx`:
 |---|---|---|
 | `MODEL` | `claude-opus-5` | Se a latência via proxy passar de ~60 s por caso, `claude-sonnet-5` |
 | `EFFORT` | `medium` | Subir para `high` se a calibração mostrar acordo baixo nos critérios de julgamento |
-| `DECIMAL_SEP` | `,` | `.` se a planilha estiver em locale en-US |
+| `DECIMAL_SEP` | `.` | Não mude: os totais da QA Semanal estão gravados como número com ponto (60.0, 31.5). Vírgula entraria como texto e sairia das médias |
+| `EXPORT_METADADOS` | `false` | `true` só depois de adicionar, na planilha, os 7 cabeçalhos `prompt_version · model · effort · denominador_I1 · denominador_I2 · n_flags · flags` logo após `nutricionista` |
 | `PROMPT_VERSION` | `v4.1` | **Sempre** que qualquer texto de critério/regra mudar |
 
 ## Como usar (nutricionista avaliadora)
 
-1. Nome do avaliador (fica salvo no navegador) e **código do caso** no formato `P01` / `A01`. Sem código válido a linha não é copiada, porque ele é a chave da planilha.
+1. Nome do avaliador (fica salvo no navegador) e **código do caso**: as 2 letras da nutricionista + número do caso com 2 dígitos, na caixa exata (`Ab10`, não `AB10`). A planilha extrai as 2 letras com uma fórmula e a aba Médias agrupa por elas com distinção de caixa. Formato fora do padrão gera um aviso amarelo, mas **não bloqueia** a cópia.
 2. Tipo **1ª Consulta + Orient.**: cole o SOAP no primeiro campo, o e-mail no segundo, e suba os PDFs. Não misture SOAP e e-mail no mesmo campo.
 3. **Avaliar caso**. Leia primeiro o bloco amarelo de flags e o painel "Fatos extraídos".
 4. Abra os critérios com ⚠ para ver evidência e justificativa.
-5. **Copiar linha para a planilha** → colar na aba da semana, a partir da coluna `timestamp`.
+5. **Copiar linha para a planilha** → colar na aba da semana, na célula da coluna `timestamp` (coluna D; as colunas A a C, `Caso` e links, são manuais) da linha do caso.
 
 ## Planilha e calibração
 
-### Colunas novas na linha exportada (v4)
+### Linha exportada
 
-Ficam **depois** das três colunas manuais `com ferramenta corrigida (I1/I2/total)`, para não deslocar nada:
+**48 células**, de `timestamp` a `com ferramenta corrigida (total)`, idêntica ao layout da v3. A célula seguinte na planilha é a fórmula `nutricionista` (`=LEFT(caso, LEN-2)`), que a linha não toca. Toda célula é sanitizada (sem tab nem quebra de linha); números saem com ponto decimal.
 
-`prompt_version · model · effort · denominador_I1 · denominador_I2 · n_flags · flags`
-
-Toda célula é sanitizada (sem tab nem quebra de linha) e os números saem com vírgula decimal.
+Os metadados (`nutricionista` como valor + `prompt_version · model · effort · denominador_I1 · denominador_I2 · n_flags · flags`) só entram com `EXPORT_METADADOS = true`, e isso exige os 7 cabeçalhos na planilha após `nutricionista`. Enquanto estiver desligado, a versão do prompt não fica registrada na QA Semanal; ela aparece no cabeçalho do artifact e no `CHANGELOG.md`.
 
 ### Aba "Calibração" (acordo humano × LLM por critério)
 
-Pré-requisito confirmado: a planilha QA_Calibracao tem as notas humanas **por critério** com o código do caso.
+Pré-requisitos: a planilha QA_Calibracao tem as notas humanas **por critério** com o código do caso (confirmado); e a coluna `prompt_version` existe na QA Semanal, o que depende de `EXPORT_METADADOS = true` (hoje desligado). Sem ela, a comparação entre versões tem que ser feita por período (a data em `timestamp`) em vez de por versão.
 
 1. Numa aba `Join`, traga para cada linha da QA Semanal a nota humana do mesmo caso e critério:
 
@@ -145,4 +144,4 @@ Pré-requisito confirmado: a planilha QA_Calibracao tem as notas humanas **por c
 
 - React + lucide-react (fornecidos pelo runtime do artifact).
 - pdf.js 3.11.174 via cdnjs, carregado em runtime para extrair texto de PDF.
-- Proxy do artifact para `api.anthropic.com/v1/messages` (sem chave no código). Se o proxy rejeitar `output_config` ou a resposta não parsear, o artifact repete a chamada sem schema; o formato de saída também está escrito no prompt, então o plano B produz o mesmo JSON. O motivo do plano B vai para as flags e para a coluna `flags` da planilha. Se mesmo assim a maioria dos critérios vier sem score, o resultado é marcado inválido e não pode ser copiado.
+- Proxy do artifact para `api.anthropic.com/v1/messages` (sem chave no código). Se o proxy rejeitar `output_config` ou a resposta não parsear, o artifact repete a chamada sem schema; o formato de saída também está escrito no prompt, então o plano B produz o mesmo JSON. O motivo do plano B vai para as flags na tela (e para a coluna `flags` quando `EXPORT_METADADOS` estiver ligado). Se mesmo assim a maioria dos critérios vier sem score, o resultado é marcado inválido e não pode ser copiado.

@@ -13,7 +13,8 @@ export const PROMPT_VERSION = "v4.1";
 const MODEL = "claude-opus-5";      // fallback pragmático se latência via proxy > ~60s: "claude-sonnet-5"
 const EFFORT = "medium";            // low | medium | high | xhigh | max
 const MAX_TOKENS = 16000;           // o thinking adaptativo consome parte deste teto
-const DECIMAL_SEP = ",";            // locale da planilha QA Semanal (pt-BR). Troque para "." se a planilha usar ponto.
+const DECIMAL_SEP = ".";            // a QA Semanal grava os totais como número com ponto (60.0, 31.5); vírgula entraria como texto e sairia da média
+const EXPORT_METADADOS = false;     // true só depois de adicionar os 7 cabeçalhos de SHEET_HEADERS_METADADOS após "nutricionista" na planilha
 const EVIDENCIA_MAX_CHARS = 120;
 
 const DARK = "#2E4057";
@@ -31,10 +32,13 @@ const BORDER = "#E2E5E9";
 
 // ── Planilha ────────────────────────────────────────────────────────────────
 // Sem gravação automática — o fluxo é manual: avaliar aqui, copiar a linha e colar na aba
-// da semana certa da planilha "QA Semanal", a partir da coluna "timestamp" (ver aba "Leia-me").
-// As colunas originais são mantidas na mesma ordem; as novas (versão do prompt, modelo,
-// denominadores, flags) vão DEPOIS das 3 colunas manuais para não deslocar nada.
-const SHEET_HEADERS = [
+// da semana da planilha "QA Semanal", na célula da coluna "timestamp" (D nas abas de semana,
+// que têm a coluna manual "Caso" em A; C na aba Modelo).
+// A linha tem EXATAMENTE 48 células, de "timestamp" a "com ferramenta corrigida (total)": a célula
+// seguinte na planilha é a fórmula "nutricionista" (=LEFT(caso, LEN-2)), que não pode ser sobrescrita.
+// Os metadados (versão do prompt, modelo, flags...) só entram com EXPORT_METADADOS = true, e aí a
+// linha passa a incluir "nutricionista" como valor idêntico ao da fórmula, seguido dos 7 metadados.
+const SHEET_HEADERS_BASE = [
   "timestamp", "avaliador", "caso", "tipo",
   "I1_1a_score", "I1_1a_justificativa", "I1_1b_score", "I1_1b_justificativa",
   "I1_2a_score", "I1_2a_justificativa", "I1_2b_score", "I1_2b_justificativa",
@@ -49,11 +53,18 @@ const SHEET_HEADERS = [
   "I1_total", "I2_total", "total",
   // Preenchidas à mão depois de reavaliar com a ferramenta corrigida.
   "com ferramenta corrigida (I1)", "com ferramenta corrigida (I2)", "com ferramenta corrigida (total)",
-  // Novas em v4 — necessárias para a aba "Calibração" (acordo por critério × versão do prompt).
-  "prompt_version", "model", "effort", "denominador_I1", "denominador_I2", "n_flags", "flags",
 ];
+// Só com EXPORT_METADADOS = true. Exige, na planilha, estes 7 cabeçalhos logo após "nutricionista".
+const SHEET_HEADERS_METADADOS = [
+  "nutricionista", "prompt_version", "model", "effort", "denominador_I1", "denominador_I2", "n_flags", "flags",
+];
+const SHEET_HEADERS = EXPORT_METADADOS ? [...SHEET_HEADERS_BASE, ...SHEET_HEADERS_METADADOS] : SHEET_HEADERS_BASE;
 
-const CASE_CODE_RX = /^[PA]\d{2,3}$/i;
+// Código do caso na planilha: 2 letras da nutricionista (maiúscula + minúscula, ex. "Ab", "Fg") + número
+// do caso com 2 dígitos → "Ab10". A fórmula "nutricionista" corta os 2 últimos caracteres, e a aba Médias
+// agrupa pelas 2 letras com distinção de caixa ("Ab" ≠ "AB"). Por isso nunca se altera a caixa do código.
+// A regex é só AVISO: um formato fora do padrão não impede a cópia (foi o bloqueio que gerou o bug da v4).
+const CASE_CODE_RX = /^[A-Za-z]{2}\d{2}$/;
 
 // ── Critérios ────────────────────────────────────────────────────────────────
 // Pesos confirmados na planilha QA_Calibracao. Texto das regras = v3 (lote de 57 casos),
@@ -889,11 +900,13 @@ function fmtNum(x) {
   return typeof x === "number" ? x.toFixed(2).replace(".", DECIMAL_SEP) : "";
 }
 
-function buildSheetRow(entry, avaliador) {
+function buildSheetRow(entry, avaliador, headers = SHEET_HEADERS) {
   const row = {
     timestamp: new Date().toISOString(),
     avaliador: avaliador || "(não informado)",
     caso: entry.caseCode,
+    // Só é emitida com EXPORT_METADADOS; espelha a fórmula da planilha: LEFT(caso, LEN-2).
+    nutricionista: CASE_CODE_RX.test(entry.caseCode) ? entry.caseCode.slice(0, -2) : "",
     tipo: entry.caseType === "P" ? "1a Consulta + Orientacoes" : "Assincrono",
     prompt_version: PROMPT_VERSION,
     model: entry.meta.model,
@@ -924,7 +937,7 @@ function buildSheetRow(entry, avaliador) {
   row["com ferramenta corrigida (I1)"] = "";
   row["com ferramenta corrigida (I2)"] = "";
   row["com ferramenta corrigida (total)"] = "";
-  return SHEET_HEADERS.map((h) => cell(row[h])).join("\t");
+  return headers.map((h) => cell(row[h])).join("\t");
 }
 
 // ── UI ──────────────────────────────────────────────────────────────────────
@@ -1220,7 +1233,7 @@ export default function QALLEEvaluator() {
 
       entry.id = Date.now();
       entry.caseType = caseType;
-      entry.caseCode = caseCode.trim().toUpperCase() || "(sem código)";
+      entry.caseCode = caseCode.trim() || "(sem código)"; // preserva a caixa: "Ab10", nunca "AB10"
       entry.timestamp = new Date().toLocaleString("pt-BR");
       entry.flags = flags;
       entry.inputs = { soapText, emailText, asyncText, files };
@@ -1243,15 +1256,14 @@ export default function QALLEEvaluator() {
   async function copyFullRow() {
     if (!result) return;
     if (result.invalid) { setError("Resultado inválido: o modelo não devolveu os critérios no formato esperado. Avalie de novo em vez de copiar."); return; }
-    if (!codeOk) { setError("Informe o código do caso no formato P01 / A01 (letra + 2 ou 3 dígitos) antes de copiar. Ele é a chave da planilha."); return; }
     setError("");
-    const line = buildSheetRow({ ...result, caseCode: caseCode.trim().toUpperCase() }, avaliador);
+    const line = buildSheetRow({ ...result, caseCode: caseCode.trim() || result.caseCode }, avaliador);
     await copyToClipboardOrFallback(line, () => { setCopiedRow(true); setTimeout(() => setCopiedRow(false), 1800); });
   }
 
   async function copyForSheet() {
     if (!result) return;
-    const text = `${caseCode.trim().toUpperCase() || result.caseCode}\t${fmtNum(result.totals.scoreTotal)}`;
+    const text = `${caseCode.trim() || result.caseCode}\t${fmtNum(result.totals.scoreTotal)}`;
     await copyToClipboardOrFallback(text, () => { setCopied(true); setTimeout(() => setCopied(false), 1800); });
   }
 
@@ -1311,9 +1323,14 @@ export default function QALLEEvaluator() {
             </div>
             <div style={{ width: 120 }}>
               <label style={label}>CÓDIGO</label>
-              <input value={caseCode} onChange={(e) => setCaseCode(e.target.value)} placeholder={caseType === "P" ? "P01" : "A01"} style={{ ...input, borderColor: caseCode && !codeOk ? AMBER : BORDER }} />
+              <input value={caseCode} onChange={(e) => setCaseCode(e.target.value)} placeholder="Ab10" style={{ ...input, borderColor: caseCode && !codeOk ? AMBER : BORDER }} />
             </div>
           </div>
+          {caseCode.trim() && !codeOk && (
+            <div style={{ fontSize: 11, color: AMBER, marginTop: -6, marginBottom: 10 }}>
+              A planilha espera 2 letras da nutricionista + 2 dígitos, com a caixa exata (ex.: Ab10). A cópia funciona mesmo assim, mas confira antes de colar.
+            </div>
+          )}
 
           <label style={label}>TIPO DE CASO</label>
           <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
@@ -1423,7 +1440,7 @@ export default function QALLEEvaluator() {
               <ClipboardCopy size={15} /> {result.invalid ? "Resultado inválido: não copiar" : copiedRow ? "Linha copiada!" : "Copiar linha para a planilha"}
             </button>
             <div style={{ fontSize: 11, color: "#999", textAlign: "center", marginTop: 6 }}>
-              Cole na aba da semana certa, a partir da coluna "timestamp". As colunas novas ({PROMPT_VERSION}, modelo, denominadores, flags) ficam depois das 3 colunas manuais.
+              Cole na aba da semana, na célula da coluna "timestamp" (coluna D) da linha do caso. São {SHEET_HEADERS.length} células, de "timestamp" a "{SHEET_HEADERS[SHEET_HEADERS.length - 1]}"{EXPORT_METADADOS ? "" : "; a coluna \"nutricionista\" continua com a fórmula"}.
             </div>
 
             <button onClick={copyForSheet} style={{ marginTop: 8, width: "100%", padding: "9px 0", borderRadius: 7, border: `1.5px solid ${BORDER}`, background: copied ? TEAL : "white", color: copied ? "white" : "#888", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
