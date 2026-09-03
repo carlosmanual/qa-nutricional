@@ -71,10 +71,10 @@ A verificação **nunca altera o score**; só gera flag para revisão humana.
 
 **Se você é nutricionista e vai usar a ferramenta:** siga [COMO-USAR.md](COMO-USAR.md). Tem o prompt pronto para colar, o teste de conferência e o que fazer quando algo dá errado. Não precisa mexer neste repositório.
 
-O prompt aponta para a tag **`v4.1.2`**, não para `main`, para que quem monta o artifact sempre pegue a versão testada:
+O prompt aponta para a tag **`v4.1.3`**, não para `main`, para que quem monta o artifact sempre pegue a versão testada:
 
 ```
-https://raw.githubusercontent.com/carlosmanual/qa-nutricional/v4.1.2/src/qa_nutricional.jsx
+https://raw.githubusercontent.com/carlosmanual/qa-nutricional/v4.1.3/src/qa_nutricional.jsx
 ```
 
 Ao promover uma versão nova, crie a tag (`git tag -a v5 ... && git push origin v5`) e atualize as URLs em `COMO-USAR.md`.

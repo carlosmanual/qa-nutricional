@@ -600,6 +600,8 @@ function anyMatch(rxs, text) {
 // Cobre tudo que altera a nota: textos dos critérios, definições, regras de NA, modelo,
 // effort e formato do export. Não cobre as funções de regra dura (o código transpilado
 // varia por ambiente); essas são cobertas pelos testes de lógica.
+export { termoNoTexto, normPalavras };
+
 export function hashRubrica() {
   const partes = [
     PROMPT_VERSION, MODEL, EFFORT, String(MAX_TOKENS), DECIMAL_SEP, String(EXPORT_METADADOS), String(EVIDENCIA_MAX_CHARS),
@@ -645,6 +647,11 @@ function stripAccents(s) {
 }
 function norm(s) {
   return stripAccents(s).replace(/[^a-z0-9]/g, "");
+}
+// Texto com acentos removidos e caixa baixa, mas COM as separações de palavra preservadas.
+// Usado onde a fronteira de palavra importa (busca de alérgeno), ao contrário de `norm`.
+function normPalavras(s) {
+  return stripAccents(s);
 }
 function wordsOf(s) {
   return stripAccents(s).split(/[^a-z0-9]+/).filter((w) => w.length >= 4);
@@ -772,10 +779,25 @@ function rulePrioridade(crit, fatos, nFiles) {
   else if (!fatos.pdf_tema_e_prioridade) setByRule(crit, "B2", "NA", "Regra automática: tema do PDF não é a prioridade clínica declarada → NA (nota máxima).");
 }
 
-function ruleAlergeno(crit, fatos, orientacaoNorm, flags) {
+// Busca de alérgeno no material. NÃO usa `norm` (que remove espaços): com o texto colado,
+// "ovo" casa dentro de "novo", "uva" dentro de "chuva" e "soja" atravessa "isso jamais".
+// Palavra inteira com plural opcional resolve isso. Para termos longos (≥6 letras, como
+// "amendoim" ou "castanha") mantemos também a busca sem espaços, porque aí o risco de casar
+// dentro de outra palavra é desprezível e ela tolera o pdf.js quebrar a palavra no meio.
+function termoNoTexto(termo, textosPalavras, textosNorm) {
+  const t = stripAccents(termo).trim();
+  if (t.length < 3) return false;
+  const esc = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const rx = new RegExp(`(^|[^a-z0-9])${esc}(s|es)?([^a-z0-9]|$)`);
+  if (textosPalavras.some((d) => rx.test(d))) return true;
+  const n = norm(termo);
+  return n.length >= 6 && textosNorm.some((d) => d.includes(n));
+}
+
+function ruleAlergeno(crit, fatos, orientacaoNorm, flags, orientacaoPalavras = []) {
   if (!crit["B2"] || crit["B2"].score === "NA") return;
   const termos = fatos.alergias_documentadas.map((a) => a.termo).filter((t) => norm(t).length >= 3);
-  const hitCodigo = termos.filter((t) => orientacaoNorm.some((d) => d.includes(norm(t))));
+  const hitCodigo = termos.filter((t) => termoNoTexto(t, orientacaoPalavras, orientacaoNorm));
   const hitLLM = fatos.alergenico_contradiz_material.valor && foundIn(fatos.alergenico_contradiz_material.citacao, orientacaoNorm);
   if (hitCodigo.length && hitLLM) {
     setByRule(crit, "B2", "0", `Regra automática (corte de segurança): alérgeno documentado (${hitCodigo.join(", ")}) aparece no material e o modelo confirmou contradição → B2 = 0.`);
@@ -1196,7 +1218,9 @@ export default function QALLEEvaluator() {
         const i2 = i2Avaliavel ? coerceInstrument(parsed.i2, I2_ALL, flags) : null;
 
         const soapNorm = norm(soapText);
-        const orientacaoNorm = [emailText, ...files.map((f) => f.text)].filter((t) => t && t.trim()).map(norm);
+        const docsOrientacao = [emailText, ...files.map((f) => f.text)].filter((t) => t && t.trim());
+        const orientacaoNorm = docsOrientacao.map(norm);
+        const orientacaoPalavras = docsOrientacao.map(normPalavras);
 
         // Verificação de evidência (escopo por instrumento).
         for (const c of I1_ALL) {
@@ -1222,7 +1246,7 @@ export default function QALLEEvaluator() {
         ruleProximosPontos(i1, fatos, pre, soapNorm, flags);
         if (i2) {
           rulePrioridade(i2, fatos, files.length);
-          ruleAlergeno(i2, fatos, orientacaoNorm, flags);
+          ruleAlergeno(i2, fatos, orientacaoNorm, flags, orientacaoPalavras);
           if (fatos.comportamento_e_prioridade && i2["A2"].score === "NA" && i2["A2"].origem !== "regra") flags.push("A2: LLM marcou NA embora o comportamento seja prioridade; conferir");
           if (fatos.pdf_tema_e_prioridade && files.length && i2["B2"].score === "NA" && i2["B2"].origem !== "regra") flags.push("B2: LLM marcou NA embora o tema do PDF seja prioridade; conferir");
         }

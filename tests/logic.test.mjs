@@ -85,6 +85,24 @@ ok(m.blankRatio([blankMap])>0.5,"blankRatio: 8/9 em branco → inválido");
 ok(m.blankRatio([all100(m.I1_ALL),all100(m.I2_ALL)])===0,"blankRatio: tudo preenchido → 0");
 ok(m.blankRatio([all100(m.I1_ALL),null])===0,"blankRatio: ignora instrumento nulo");
 console.log("system chars (v4.1):",sys.length,"~tokens:",Math.round(sys.length/3.5));
+// alérgeno: fronteira de palavra (evita "ovo" em "novo", "uva" em "chuva", "soja" em "isso jamais")
+const P=(t)=>[m.normPalavras(t)], NN=(t)=>[m.norm(t)];
+ok(!m.termoNoTexto("ovo", P("Este e um novo plano alimentar."), NN("Este e um novo plano alimentar.")),"alérgeno: 'ovo' não casa em 'novo'");
+ok(!m.termoNoTexto("uva", P("Chuva de ideias."), NN("Chuva de ideias.")),"alérgeno: 'uva' não casa em 'chuva'");
+ok(!m.termoNoTexto("soja", P("Isso jamais deve ser feito."), NN("Isso jamais deve ser feito.")),"alérgeno: 'soja' não atravessa 'isso jamais'");
+ok(!m.termoNoTexto("mel", P("Escolha a melhor opcao."), NN("Escolha a melhor opcao.")),"alérgeno: 'mel' não casa em 'melhor'");
+ok(m.termoNoTexto("ovo", P("Bata 2 ovos com farinha."), NN("Bata 2 ovos com farinha.")),"alérgeno: 'ovo' casa com o plural 'ovos'");
+ok(m.termoNoTexto("mel", P("Adoce com mel."), NN("Adoce com mel.")),"alérgeno: 'mel' casa com a palavra real");
+ok(m.termoNoTexto("noz", P("Acrescente nozes picadas."), NN("Acrescente nozes picadas.")),"alérgeno: 'noz' casa com 'nozes'");
+ok(m.termoNoTexto("amendoim", P("pasta de amen doim caseira"), NN("pasta de amen doim caseira")),"alérgeno: termo longo tolera quebra do pdf.js");
+ok(m.termoNoTexto("Amendoim", P("bolo de AMENDOIM"), NN("bolo de AMENDOIM")),"alérgeno: caixa e acento indiferentes");
+ok(!m.termoNoTexto("ov", P("qualquer texto"), NN("qualquer texto")),"alérgeno: termo com menos de 3 letras é ignorado");
+// a regra completa continua exigindo os dois sinais para zerar
+let i2fp=Object.fromEntries(m.I2_ALL.map(c=>[c.k,{score:"100",evidencia:"x",justificativa:"",origem:"llm"}]));
+const flFP=[]; const docFP="Este e um novo plano com opcao melhor.";
+m.ruleAlergeno(i2fp, m.coerceFatos({alergias_documentadas:[{termo:"ovo",citacao:"alergia a ovo"},{termo:"mel",citacao:"x"}],alergenico_contradiz_material:{valor:false,citacao:""}}), NN(docFP), flFP, P(docFP));
+ok(i2fp["B2"].score==="100"&&flFP.length===0,"alérgeno: 'novo'/'melhor' não geram mais flag falsa");
+
 // integridade da rubrica (H): o hash tem que bater com a constante publicada
 const hAtual=m.hashRubrica();
 ok(/^[0-9a-f]{8}$/.test(hAtual),"hashRubrica: 8 hex");

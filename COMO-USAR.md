@@ -19,11 +19,11 @@ Copie o bloco inteiro abaixo e cole como primeira mensagem.
 ```
 Busque o conteúdo desta URL e crie um artifact React com ele:
 
-https://raw.githubusercontent.com/carlosmanual/qa-nutricional/v4.1.2/src/qa_nutricional.jsx
+https://raw.githubusercontent.com/carlosmanual/qa-nutricional/v4.1.3/src/qa_nutricional.jsx
 
 Regras obrigatórias:
 
-1. Reproduza o arquivo EXATAMENTE como está, do primeiro ao último caractere. São 1507 linhas.
+1. Reproduza o arquivo EXATAMENTE como está, do primeiro ao último caractere. São 1531 linhas.
 2. Não resuma, não encurte, não reescreva, não reorganize, não "melhore" nada. Não corrija o que parecer estranho: é intencional.
 3. Nunca escreva placeholders como "// resto do código igual", "// ...", "[mantém o restante]" ou equivalente. O artifact tem que estar completo.
 4. Não altere nenhuma constante do topo do arquivo, em especial PROMPT_VERSION, RUBRICA_HASH, MODEL, EFFORT, MAX_TOKENS e DECIMAL_SEP. Elas mudam a nota que a ferramenta dá.
@@ -76,7 +76,7 @@ Clique em **Avaliar caso** e confira as quatro coisas:
 
 Bateu tudo? O artifact está correto. Não bateu? O código veio incompleto: recomece do passo 1.
 
-> Esse teste existe porque o texto tem 1507 linhas. Um artifact truncado continua bonito na tela, mas perde as regras automáticas e passa a dar nota errada em silêncio. O teste é o que revela isso.
+> Esse teste existe porque o texto tem 1531 linhas. Um artifact truncado continua bonito na tela, mas perde as regras automáticas e passa a dar nota errada em silêncio. O teste é o que revela isso.
 
 ## Passo 5 — Usar
 
@@ -126,12 +126,12 @@ Ao terminar, confirme quantas linhas o artifact tem e que ele contém PROMPT_VER
 
 ## Para quem mantém a ferramenta
 
-O prompt aponta para a **tag `v4.1.2`**, não para `main`. Assim quem monta o artifact sempre pega a versão testada, mesmo que `main` esteja no meio de uma alteração.
+O prompt aponta para a **tag `v4.1.3`**, não para `main`. Assim quem monta o artifact sempre pega a versão testada, mesmo que `main` esteja no meio de uma alteração.
 
 Ao promover uma versão nova:
 
 1. `git tag -a v5 -m "..." && git push origin v5`
-2. Trocar `v4.1.2` por `v5` nas duas URLs e nas checagens deste arquivo (inclusive o número de linhas e o hash da rubrica, que `bash tests/run.sh` imprime).
+2. Trocar `v4.1.3` por `v5` nas duas URLs e nas checagens deste arquivo (inclusive o número de linhas e o hash da rubrica, que `bash tests/run.sh` imprime).
 3. Avisar a equipe para remontar o artifact. Enquanto não remontarem, seguem na versão anterior; o cabeçalho do artifact mostra qual é.
 
 Alternativa com menos passos para a equipe: montar o artifact uma vez, publicá-lo e distribuir o link. Nesse caso ninguém precisa deste guia, e a atualização vira uma republicação só sua.

@@ -2,6 +2,24 @@
 
 Uma entrada por `PROMPT_VERSION`. Registre o acordo medido na aba Calibração assim que o golden set rodar.
 
+## v4.1.3 — 2026-09-03 (falso positivo de alérgeno)
+
+Sem mudança de rubrica nem de `PROMPT_VERSION` (continua `v4.1`); `RUBRICA_HASH` segue `8d5e63b9`, porque o checksum cobre dados e a correção é numa função.
+
+Encontrado ao revisar o caso da prescrição com os textos reais dos dois PDFs. `ruleAlergeno` buscava o termo com `norm`, que remove os espaços, então a busca atravessava fronteira de palavra:
+
+- `"ovo"` casava dentro de **novo**, `"uva"` dentro de **chuva**, `"mel"` dentro de **melhor**;
+- `"soja"` casava em **isso jamais**, atravessando duas palavras.
+
+Cada um desses gerava a flag vermelha "termo alergênico aparece no material; REVISAR MANUALMENTE" sem motivo. Nunca zerava nota sozinho (o corte de segurança exige também a confirmação do modelo), mas era ruído numa flag de segurança clínica, que é onde ruído custa mais caro.
+
+- Nova função `termoNoTexto`: palavra inteira com plural opcional (`ovo` casa `ovos`, `noz` casa `nozes`), sobre o texto com as separações preservadas.
+- Para termos com 6 letras ou mais (`amendoim`, `castanha`, `lactose`) a busca sem espaços continua valendo como rede: aí o risco de casar dentro de outra palavra é desprezível e ela tolera o pdf.js quebrar a palavra no meio.
+- Termos com menos de 3 letras continuam ignorados.
+- Testes: 65 (13 novos).
+
+Verificado com os PDFs reais do caso: `amendoim` documentado no SOAP e ausente dos materiais resulta em B2 = 100 e zero flags, enquanto as palavras **novo** e **melhor** do material deixaram de disparar alarme.
+
 ## v4.1.2 — 2026-09-03 (checksum da rubrica + PDF curto deixa de ser alarme)
 
 Sem mudança de rubrica nem de `PROMPT_VERSION` (continua `v4.1`).
