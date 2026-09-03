@@ -10,6 +10,10 @@ import { ClipboardCopy, ChevronDown, ChevronUp, Loader2, History, Trash2, Upload
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const PROMPT_VERSION = "v4.1";
+// Impressão digital da rubrica e das constantes que mudam a nota. Conferida no carregamento:
+// um artifact em que o Claude "melhorou" um critério ao transcrever compila e roda igual, mas
+// pontua fora da rubrica — e nenhum teste de tela pega isso. Valor gerado por `bash tests/run.sh`.
+export const RUBRICA_HASH = "8d5e63b9";
 const MODEL = "claude-opus-5";      // fallback pragmático se latência via proxy > ~60s: "claude-sonnet-5"
 const EFFORT = "medium";            // low | medium | high | xhigh | max
 const MAX_TOKENS = 16000;           // o thinking adaptativo consome parte deste teto
@@ -592,6 +596,26 @@ function anyMatch(rxs, text) {
   return rxs.some((rx) => rx.test(text));
 }
 
+// ── Integridade da rubrica ──────────────────────────────────────────────────
+// Cobre tudo que altera a nota: textos dos critérios, definições, regras de NA, modelo,
+// effort e formato do export. Não cobre as funções de regra dura (o código transpilado
+// varia por ambiente); essas são cobertas pelos testes de lógica.
+export function hashRubrica() {
+  const partes = [
+    PROMPT_VERSION, MODEL, EFFORT, String(MAX_TOKENS), DECIMAL_SEP, String(EXPORT_METADADOS), String(EVIDENCIA_MAX_CHARS),
+    DEFINICOES, REGRAS_GERAIS, REGRAS_NA,
+    JSON.stringify([I1_CENTRAL, I1_FORM, I2_CENTRAL, I2_FORM, I3_CRIT]),
+    JSON.stringify([SHEET_HEADERS_BASE, SHEET_HEADERS_METADADOS]),
+    String(CASE_CODE_RX),
+    Object.entries(RX).map(([k, v]) => `${k}=${Array.isArray(v) ? v.map(String).join("|") : String(v)}`).join(";"),
+  ].join(" ");
+  let h = 5381;
+  for (let i = 0; i < partes.length; i++) h = ((h * 33) ^ partes.charCodeAt(i)) >>> 0;
+  return h.toString(16).padStart(8, "0");
+}
+
+const RUBRICA_HASH_ATUAL = hashRubrica();
+
 function preChecks(soap) {
   const hasProximosPontos = (() => {
     const m = RX.proximosPontos.exec(soap);
@@ -1084,6 +1108,8 @@ export default function QALLEEvaluator() {
     try { return localStorage.getItem("qa_nutri_avaliador") || ""; } catch { return ""; }
   });
   const [fallbackText, setFallbackText] = useState(null);
+  const [previewId, setPreviewId] = useState(null);
+  const rubricaOk = RUBRICA_HASH_ATUAL === RUBRICA_HASH;
   const fileInputRef = useRef(null);
   const fallbackRef = useRef(null);
 
@@ -1119,24 +1145,21 @@ export default function QALLEEvaluator() {
     setError("");
     setExtracting(true);
     const failed = [];
-    const low = [];
     const newFiles = [];
     for (const file of selected) {
       try {
         const { text, pages } = await extractPdfText(file);
         if (!text) { failed.push(file.name); continue; }
-        const lowText = text.length / Math.max(1, pages) < 200;
-        if (lowText) low.push(file.name);
-        newFiles.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: file.name, text, pages, lowText });
+        // Texto curto NÃO é sinal de PDF escaneado: uma prescrição tem 2 linhas por natureza.
+        // O chip mostra o tamanho como fato e o botão "ver texto" deixa conferir; sem alarme falso.
+        const curto = text.length / Math.max(1, pages) < 200;
+        newFiles.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: file.name, text, pages, curto });
       } catch {
         failed.push(file.name);
       }
     }
     if (newFiles.length) setFiles((prev) => [...prev, ...newFiles]);
-    const msgs = [];
-    if (failed.length) msgs.push(`Não foi possível extrair texto de: ${failed.join(", ")} (PDF escaneado/imagem?).`);
-    if (low.length) msgs.push(`Pouco texto extraído de: ${low.join(", ")} (< 200 caracteres/página). O modelo pode não ver o conteúdo real.`);
-    if (msgs.length) setError(msgs.join(" "));
+    if (failed.length) setError(`Sem texto extraível em: ${failed.join(", ")}. Se for um PDF escaneado (foto/imagem), o modelo não conseguirá ler; avalie esse material à parte.`);
     setExtracting(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -1288,12 +1311,21 @@ export default function QALLEEvaluator() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
           <div>
             <div style={{ fontSize: 19, fontWeight: 700, color: DARK }}>Avaliador LLM — QA Nutricional Voy</div>
-            <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Prompt {PROMPT_VERSION} · {MODEL} · effort {EFFORT} · mesmos critérios da planilha de calibração</div>
+            <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Prompt {PROMPT_VERSION} · {MODEL} · effort {EFFORT} · rubrica <span style={{ fontFamily: "ui-monospace, monospace", color: rubricaOk ? "#888" : RED, fontWeight: rubricaOk ? 400 : 700 }}>{RUBRICA_HASH_ATUAL}</span></div>
           </div>
           <button onClick={() => setShowHistory(!showHistory)} style={{ display: "flex", alignItems: "center", gap: 6, background: "white", border: `1px solid ${BORDER}`, borderRadius: 6, padding: "6px 12px", fontSize: 12, color: "#555", cursor: "pointer" }}>
             <History size={14} /> Histórico ({history.length})
           </button>
         </div>
+
+        {!rubricaOk && (
+          <div style={{ background: RED_BG, border: `1px solid ${RED}55`, borderRadius: 8, padding: "12px 16px", marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: RED, marginBottom: 4 }}>✖ Este artifact não é a versão publicada</div>
+            <div style={{ fontSize: 12, color: RED, lineHeight: 1.5 }}>
+              A rubrica ou uma constante foi alterada ao montar o artifact, então as notas sairiam fora do padrão da equipe. Esperado <code style={{ fontFamily: "ui-monospace, monospace" }}>{RUBRICA_HASH}</code>, encontrado <code style={{ fontFamily: "ui-monospace, monospace" }}>{RUBRICA_HASH_ATUAL}</code>. Remonte o artifact em um chat novo seguindo o guia (passo 1), sem deixar o Claude editar nada.
+            </div>
+          </div>
+        )}
 
         {showHistory && (
           <div style={{ background: "white", border: `1px solid ${BORDER}`, borderRadius: 8, padding: 12, marginBottom: 16, maxHeight: 220, overflowY: "auto" }}>
@@ -1352,10 +1384,23 @@ export default function QALLEEvaluator() {
                 {files.length > 0 && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
                     {files.map((f) => (
-                      <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 6, border: `1px solid ${f.lowText ? AMBER : TEAL}`, background: f.lowText ? AMBER_BG : GREEN_BG }}>
-                        {f.lowText ? <AlertTriangle size={15} color={AMBER} /> : <FileCheck size={15} color={GREEN} />}
-                        <span style={{ flex: 1, fontSize: 12, color: f.lowText ? AMBER : GREEN, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name} <span style={{ fontWeight: 400 }}>· {f.pages} pág · {f.text.length} caracteres</span></span>
-                        <button onClick={() => removeFile(f.id)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><X size={15} color="#888" /></button>
+                      <div key={f.id} style={{ borderRadius: 6, border: `1px solid ${TEAL}`, background: GREEN_BG, overflow: "hidden" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px" }}>
+                          <FileCheck size={15} color={GREEN} />
+                          <span style={{ flex: 1, fontSize: 12, color: GREEN, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {f.name} <span style={{ fontWeight: 400 }}>· {f.pages} pág · {f.text.length} caracteres{f.curto ? " · texto curto, normal em prescrição" : ""}</span>
+                          </span>
+                          <button onClick={() => setPreviewId(previewId === f.id ? null : f.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: TEAL, fontWeight: 600, textDecoration: "underline", padding: 0 }}>
+                            {previewId === f.id ? "ocultar" : "ver texto"}
+                          </button>
+                          <button onClick={() => removeFile(f.id)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><X size={15} color="#888" /></button>
+                        </div>
+                        {previewId === f.id && (
+                          <div style={{ borderTop: `1px solid ${TEAL}33`, background: "white", padding: "8px 12px" }}>
+                            <div style={{ fontSize: 10.5, color: "#999", marginBottom: 4 }}>Exatamente o que o modelo vai ler deste arquivo:</div>
+                            <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0, fontSize: 11, color: "#444", maxHeight: 200, overflow: "auto", fontFamily: "ui-monospace, monospace" }}>{f.text}</pre>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1378,8 +1423,8 @@ export default function QALLEEvaluator() {
 
           {error && <div style={{ color: RED, fontSize: 12, marginTop: 10 }}>{error}</div>}
 
-          <button onClick={handleEvaluate} disabled={loading || extracting} style={{ marginTop: 12, width: "100%", padding: "11px 0", borderRadius: 7, border: "none", background: loading ? "#9AA5B1" : DARK, color: "white", fontSize: 14, fontWeight: 600, cursor: loading ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-            {loading ? (<><Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> Avaliando (pode levar 1-2 min com raciocínio ativo)...</>) : "Avaliar caso"}
+          <button onClick={handleEvaluate} disabled={loading || extracting || !rubricaOk} style={{ marginTop: 12, width: "100%", padding: "11px 0", borderRadius: 7, border: "none", background: !rubricaOk ? "#C9CED4" : loading ? "#9AA5B1" : DARK, color: "white", fontSize: 14, fontWeight: 600, cursor: loading || !rubricaOk ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            {!rubricaOk ? "Bloqueado: rubrica alterada" : loading ? (<><Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> Avaliando (pode levar 1-2 min com raciocínio ativo)...</>) : "Avaliar caso"}
           </button>
         </div>
 
@@ -1436,8 +1481,8 @@ export default function QALLEEvaluator() {
               <InstrumentBlock title="INSTRUMENTO 3 — ASSÍNCRONO" accentBg={BLUE_BG} accentColor={BLUE} crit={result.crit.i3} criteriaCentral={I3_CRIT} criteriaForm={[]} totals={result.totals.i3} />
             )}
 
-            <button onClick={copyFullRow} disabled={result.invalid} style={{ marginTop: 8, width: "100%", padding: "11px 0", borderRadius: 7, border: "none", background: result.invalid ? "#C9CED4" : copiedRow ? GREEN : DARK, color: "white", fontSize: 14, fontWeight: 700, cursor: result.invalid ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-              <ClipboardCopy size={15} /> {result.invalid ? "Resultado inválido: não copiar" : copiedRow ? "Linha copiada!" : "Copiar linha para a planilha"}
+            <button onClick={copyFullRow} disabled={result.invalid || !rubricaOk} style={{ marginTop: 8, width: "100%", padding: "11px 0", borderRadius: 7, border: "none", background: result.invalid || !rubricaOk ? "#C9CED4" : copiedRow ? GREEN : DARK, color: "white", fontSize: 14, fontWeight: 700, cursor: result.invalid || !rubricaOk ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              <ClipboardCopy size={15} /> {!rubricaOk ? "Bloqueado: rubrica alterada" : result.invalid ? "Resultado inválido: não copiar" : copiedRow ? "Linha copiada!" : "Copiar linha para a planilha"}
             </button>
             <div style={{ fontSize: 11, color: "#999", textAlign: "center", marginTop: 6 }}>
               Cole na aba da semana, na célula da coluna "timestamp" (coluna D) da linha do caso. São {SHEET_HEADERS.length} células, de "timestamp" a "{SHEET_HEADERS[SHEET_HEADERS.length - 1]}"{EXPORT_METADADOS ? "" : "; a coluna \"nutricionista\" continua com a fórmula"}.

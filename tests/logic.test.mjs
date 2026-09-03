@@ -85,5 +85,13 @@ ok(m.blankRatio([blankMap])>0.5,"blankRatio: 8/9 em branco → inválido");
 ok(m.blankRatio([all100(m.I1_ALL),all100(m.I2_ALL)])===0,"blankRatio: tudo preenchido → 0");
 ok(m.blankRatio([all100(m.I1_ALL),null])===0,"blankRatio: ignora instrumento nulo");
 console.log("system chars (v4.1):",sys.length,"~tokens:",Math.round(sys.length/3.5));
+// integridade da rubrica (H): o hash tem que bater com a constante publicada
+const hAtual=m.hashRubrica();
+ok(/^[0-9a-f]{8}$/.test(hAtual),"hashRubrica: 8 hex");
+ok(hAtual===m.hashRubrica(),"hashRubrica: determinístico");
+if(hAtual!==m.RUBRICA_HASH){
+  fails++;
+  console.log(`FAIL: RUBRICA_HASH desatualizado. A rubrica ou uma constante mudou.\n      Troque no topo de src/qa_nutricional.jsx:\n      export const RUBRICA_HASH = "${hAtual}";`);
+} else console.log("ok  : RUBRICA_HASH bate com a rubrica atual ("+hAtual+")");
 console.log(fails?`\n${fails} FALHA(S)`:"\nTODOS OS TESTES PASSARAM");
 process.exit(fails?1:0);

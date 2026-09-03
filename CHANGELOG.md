@@ -2,6 +2,21 @@
 
 Uma entrada por `PROMPT_VERSION`. Registre o acordo medido na aba Calibração assim que o golden set rodar.
 
+## v4.1.2 — 2026-09-03 (checksum da rubrica + PDF curto deixa de ser alarme)
+
+Sem mudança de rubrica nem de `PROMPT_VERSION` (continua `v4.1`).
+
+**Checksum da rubrica (H).** `RUBRICA_HASH` (djb2, 8 hex, sem biblioteca) cobre textos dos critérios, definições, regras de NA, `PROMPT_VERSION`, `MODEL`, `EFFORT`, `MAX_TOKENS`, `DECIMAL_SEP`, `EXPORT_METADADOS`, `CASE_CODE_RX`, os regex de pré-checagem e os cabeçalhos do export. Conferido no carregamento; divergiu, banner vermelho e **Avaliar** e **Copiar** desabilitados. Fecha o modo de falha que o teste de 30 segundos não pega: um artifact com rubrica alterada compila, roda e pontua fora do padrão sem sinal nenhum. O hash aparece no cabeçalho do artifact e o guia manda conferir. `tests/run.sh` falha com o valor novo para colar quando a rubrica muda. Valor atual: `8d5e63b9`.
+
+**PDF curto deixou de virar alarme falso.** Diagnóstico a partir de uma prescrição real (Carine Goncalves): 1 página, 167 caracteres de texto extraível cobrindo o documento inteiro, e a única imagem embutida é um logo de 118x63 px. O modelo via 100% do conteúdo, mas a heurística `< 200 caracteres/página` da v4 exibia "O modelo pode não ver o conteúdo real" em vermelho, na área de erro. A heurística confundia documento curto com documento sem texto.
+
+- O aviso vermelho saiu. Texto curto agora é informação neutra no próprio chip: "163 caracteres · texto curto, normal em prescrição".
+- Botão **ver texto** em cada PDF mostra exatamente o que o modelo vai ler. Acaba com a adivinhação, e serve também para conferir a extração de materiais longos.
+- PDF sem nenhum texto extraível continua recusado, agora com mensagem que explica a causa (escaneado) e o que fazer.
+- Testes: 54 (3 novos).
+
+**Não feito de propósito:** tratar prescrição como tipo próprio na rubrica (não contar em C2 como volume, checar só alergia em B2 e cobertura em A1). Isso é mudança de rubrica, exige `v4.2` e golden set. Hoje a prescrição entra como um material qualquer.
+
 ## v4.1.1 — 2026-09-03 (botão "Copiar linha para a planilha")
 
 Sem mudança de rubrica nem de `PROMPT_VERSION` (continua `v4.1`). Tag nova porque o guia da nutri aponta para a tag.

@@ -41,6 +41,14 @@ Painel com flags de revisão → "Copiar linha para a planilha"
 
 Um fato (peso, altura, IMC, campo "Próximos pontos") conta como presente se o regex achou **ou** se o modelo o declarou presente com uma citação que o código localizou no SOAP.
 
+### Integridade da rubrica
+
+`RUBRICA_HASH` é um hash de tudo que muda a nota: textos dos critérios, definições, regras de NA, `PROMPT_VERSION`, `MODEL`, `EFFORT`, `DECIMAL_SEP`, `EXPORT_METADADOS` e o formato do export. É conferido no carregamento e aparece no cabeçalho do artifact.
+
+Divergiu, a tela mostra banner vermelho e desabilita **Avaliar** e **Copiar**. Isso cobre o modo de falha que o teste funcional não pega: um artifact em que o Claude "melhorou" um critério ao transcrever compila, roda e pontua fora da rubrica sem nenhum sinal.
+
+Ao mudar qualquer texto de critério, `bash tests/run.sh` falha e imprime o valor novo para colar em `RUBRICA_HASH`. É um passo obrigatório, e de propósito: nenhuma alteração de rubrica passa despercebida.
+
 ### Verificação de evidência
 
 Cada score vem com uma citação literal. O código normaliza (remove acentos, pontuação, espaços, caixa) e procura a citação **somente no documento permitido**: Instrumento 1 → SOAP; Instrumento 2 → e-mail + materiais. Resultado por critério:
@@ -63,10 +71,10 @@ A verificação **nunca altera o score**; só gera flag para revisão humana.
 
 **Se você é nutricionista e vai usar a ferramenta:** siga [COMO-USAR.md](COMO-USAR.md). Tem o prompt pronto para colar, o teste de conferência e o que fazer quando algo dá errado. Não precisa mexer neste repositório.
 
-O prompt aponta para a tag **`v4.1.1`**, não para `main`, para que quem monta o artifact sempre pegue a versão testada:
+O prompt aponta para a tag **`v4.1.2`**, não para `main`, para que quem monta o artifact sempre pegue a versão testada:
 
 ```
-https://raw.githubusercontent.com/carlosmanual/qa-nutricional/v4.1.1/src/qa_nutricional.jsx
+https://raw.githubusercontent.com/carlosmanual/qa-nutricional/v4.1.2/src/qa_nutricional.jsx
 ```
 
 Ao promover uma versão nova, crie a tag (`git tag -a v5 ... && git push origin v5`) e atualize as URLs em `COMO-USAR.md`.
@@ -143,5 +151,5 @@ Pré-requisitos: a planilha QA_Calibracao tem as notas humanas **por critério**
 ## Dependências
 
 - React + lucide-react (fornecidos pelo runtime do artifact).
-- pdf.js 3.11.174 via cdnjs, carregado em runtime para extrair texto de PDF.
+- pdf.js 3.11.174 via cdnjs, carregado em runtime para extrair texto de PDF. Só extrai texto: PDF escaneado (imagem) é recusado no upload com aviso. Texto curto **não** é tratado como erro (uma prescrição tem 2 linhas por natureza); o chip mostra o tamanho e um botão "ver texto" exibe exatamente o que o modelo vai ler.
 - Proxy do artifact para `api.anthropic.com/v1/messages` (sem chave no código). Se o proxy rejeitar `output_config` ou a resposta não parsear, o artifact repete a chamada sem schema; o formato de saída também está escrito no prompt, então o plano B produz o mesmo JSON. O motivo do plano B vai para as flags na tela (e para a coluna `flags` quando `EXPORT_METADADOS` estiver ligado). Se mesmo assim a maioria dos critérios vier sem score, o resultado é marcado inválido e não pode ser copiado.
